@@ -1,0 +1,12 @@
+<h1>Список користувачів</h1>
+<ul>
+    {{#users}}
+    <li>{{name}} ({{email}}, {{age}} років)</li>
+    {{/users}}
+</ul>
+<form action="/users" method="POST">
+    <input type="text" name="name" placeholder="Ім'я">
+    <input type="email" name="email" placeholder="Email">
+    <input type="number" name="age" placeholder="Вік">
+    <button type="submit">Додати користувача</button>
+</form>

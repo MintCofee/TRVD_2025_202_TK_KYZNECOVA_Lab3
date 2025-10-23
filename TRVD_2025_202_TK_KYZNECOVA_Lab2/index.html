@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Головна — Моя колекція гітарних пісень</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner container">
+      <h1 class="site-title">Моя колекція гітарних пісень</h1>
+      <nav class="main-nav">
+        <a class="nav-link is-active" href="index.html">Головна</a>
+        <a class="nav-link" href="collections.html">Збірки пісень</a>
+        <a class="nav-link" href="create.html">Створити пісню</a>
+        <a class="nav-link" href="account.html">Мій акаунт</a>
+        <a class="nav-link" href="about.html">Про сайт</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h2>Ласкаво просимо!</h2>
+      <p>Тут ти можеш створювати власні гітарні пісні, зберігати їх та переглядати колекції інших користувачів.</p>
+      <div class="hero-actions">
+        <a href="create.html" class="button">Створити пісню</a>
+        <a href="account.html" class="button secondary">Створити акаунт</a>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Останні пісні</h3>
+      <div id="latest-songs">
+        <!-- JS підвантажить останні пісні тут -->
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    &copy; 2025 Моя колекція гітарних пісень
+  </footer>
+</body>
+</html>

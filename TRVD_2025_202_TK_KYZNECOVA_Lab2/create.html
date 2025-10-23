@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <title>Створити пісню</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner container">
+      <h1 class="site-title">Створити пісню</h1>
+      <nav class="main-nav">
+        <a class="nav-link" href="index.html">Головна</a>
+        <a class="nav-link" href="collections.html">Збірки пісень</a>
+        <a class="nav-link is-active" href="create.html">Створити пісню</a>
+        <a class="nav-link" href="account.html">Мій акаунт</a>
+        <a class="nav-link" href="about.html">Про сайт</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <form id="song-form" class="entity-form">
+        <label>Назва пісні <input type="text" id="song-title" required></label>
+        <label>Автор (користувач) <select id="song-author" required></select></label>
+        <label>Табулатура <textarea id="song-tabs" rows="6" required></textarea></label>
+        <div class="form-actions">
+          <button type="submit">Зберегти пісню</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    &copy; 2025 Моя колекція гітарних пісень
+  </footer>
+</body>
+</html>
