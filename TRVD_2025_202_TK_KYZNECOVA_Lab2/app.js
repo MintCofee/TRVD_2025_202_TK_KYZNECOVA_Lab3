@@ -2,39 +2,25 @@ const express = require('express');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const cors = require('cors');
-require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-in-production';
+const PORT = 3000;
+const SECRET_KEY = 'your-secret-key-for-jwt';
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Проміжне ПЗ для логування
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-});
-
-// Мокова база даних
-let tabs = [
+// Мокова база даних для гітарних табулатур
+let guitarTabs = [
     {
         id: 1,
         title: "Nothing Else Matters",
         artist: "Metallica",
         difficulty: "intermediate",
         genre: "metal",
-        tabContent: `e|-----------------|
-B|-----------------|
-G|-----------------|
-D|-----------------|
-A|-----------------|
-E|0-3-5-----------|`,
+        tabContent: "e|-0-0-0---0-0-0-0-0---0-0-0-0-0---|\nB|----------------------------------|\nG|----------------------------------|\nD|----------------------------------|\nA|----------------------------------|\nE|----------------------------------|",
         capo: 0,
         tuning: "Standard",
         author: "admin",
@@ -48,44 +34,53 @@ E|0-3-5-----------|`,
         artist: "Pink Floyd",
         difficulty: "beginner",
         genre: "rock",
-        tabContent: `e|-----------------|
-B|-----------------|
-G|-----------------|
-D|-----------------|
-A|-----------------|
-E|0-2-3-2-0-------|`,
+        tabContent: "e|-----------------0---------------|\nB|-------------0--------0--------|\nG|----------0----------------0---|\nD|-------2-----------------------|\nA|----2--------------------------|\nE|-0-----------------------------|",
         capo: 2,
         tuning: "Standard",
         author: "user1",
         createdAt: "2023-10-10",
         likes: 89,
         views: 1200
+    },
+    {
+        id: 3,
+        title: "Smoke on the Water",
+        artist: "Deep Purple",
+        difficulty: "beginner",
+        genre: "rock",
+        tabContent: "e|-----------------|\nB|-----------------|\nG|-----------------|\nD|-----------------|\nA|--3-6--3-6-3-6-3-|\nE|-----------------|",
+        capo: 0,
+        tuning: "Standard",
+        author: "admin",
+        createdAt: "2023-10-05",
+        likes: 200,
+        views: 2500
     }
 ];
 
+// Мокова база даних для пісень
 let songs = [
     {
         id: 1,
-        title: "Smoke on the Water",
-        artist: "Deep Purple",
-        year: 1972,
-        album: "Machine Head",
-        chords: ["G", "C", "D", "Em"],
-        duration: "5:40",
-        tabId: 3
+        title: "Stairway to Heaven",
+        artist: "Led Zeppelin",
+        album: "Led Zeppelin IV",
+        year: 1971,
+        duration: "8:02",
+        tabId: 1
     },
     {
         id: 2,
-        title: "Stairway to Heaven",
-        artist: "Led Zeppelin",
-        year: 1971,
-        album: "Led Zeppelin IV",
-        chords: ["Am", "C", "D", "F", "G"],
-        duration: "8:02",
-        tabId: 4
+        title: "Hotel California",
+        artist: "Eagles",
+        album: "Hotel California",
+        year: 1976,
+        duration: "6:30",
+        tabId: 2
     }
 ];
 
+// Мокова база даних для користувачів
 let users = [
     {
         id: 1,
@@ -93,115 +88,91 @@ let users = [
         email: 'admin@guitartabs.com',
         password: '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq2V8U1QH2RZ5.1Pzq8QfTk7J1qW1y', // "admin123"
         role: 'admin',
-        joinDate: '2023-01-15',
-        favorites: [1, 2]
+        createdAt: '2023-01-15'
     },
     {
         id: 2,
         username: 'guitar_lover',
         email: 'user@example.com',
-        password: '$2a$10$YourHashedPasswordHere', // "password123"
+        password: '$2a$10$SomeOtherHashForPassword123',
         role: 'user',
-        joinDate: '2023-03-20',
-        favorites: [1]
+        createdAt: '2023-03-20'
     }
 ];
 
-// Middleware для перевірки JWT
+// ==================== Middleware для JWT авторизації ====================
+
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     
     if (!token) {
-        return res.status(401).json({ 
-            success: false,
-            error: 'Токен не надано. Будь ласка, увійдіть в систему.' 
-        });
+        return res.status(401).json({ error: 'Токен не надано' });
     }
     
     jwt.verify(token, SECRET_KEY, (err, user) => {
         if (err) {
-            return res.status(403).json({ 
-                success: false,
-                error: 'Недійсний або прострочений токен' 
-            });
+            return res.status(403).json({ error: 'Недійсний токен' });
         }
         req.user = user;
         next();
     });
 };
 
-// Middleware для перевірки ролі адміна
-const requireAdmin = (req, res, next) => {
-    if (req.user.role !== 'admin') {
-        return res.status(403).json({ 
-            success: false,
-            error: 'Доступ заборонено. Потрібні права адміністратора.' 
-        });
-    }
-    next();
-};
+// ==================== API для аутентифікації ====================
 
-// ==================== АВТОРИЗАЦІЯ ====================
-
-// Реєстрація
+// POST /api/auth/register - Реєстрація користувача
 app.post('/api/auth/register', async (req, res) => {
     const { username, email, password } = req.body;
     
-    // Валідація
-    const errors = [];
-    if (!username || username.trim().length < 3) {
-        errors.push('Ім\'я користувача має містити принаймні 3 символи');
-    }
-    if (!email || !email.includes('@')) {
-        errors.push('Введіть коректний email');
-    }
-    if (!password || password.length < 6) {
-        errors.push('Пароль має містити принаймні 6 символів');
-    }
-    if (users.find(u => u.username === username)) {
-        errors.push('Користувач з таким іменем вже існує');
-    }
-    if (users.find(u => u.email === email)) {
-        errors.push('Користувач з таким email вже існує');
+    // Валідація вхідних даних
+    if (!username || !email || !password) {
+        return res.status(400).json({ error: 'Усі поля обов\'язкові' });
     }
     
-    if (errors.length > 0) {
-        return res.status(400).json({ 
-            success: false,
-            errors 
-        });
+    if (username.length < 3) {
+        return res.status(400).json({ error: 'Ім\'я користувача має містити мінімум 3 символи' });
+    }
+    
+    if (password.length < 6) {
+        return res.status(400).json({ error: 'Пароль має містити мінімум 6 символів' });
+    }
+    
+    if (!email.includes('@')) {
+        return res.status(400).json({ error: 'Невірний формат email' });
+    }
+    
+    // Перевірка чи користувач вже існує
+    if (users.find(u => u.username === username)) {
+        return res.status(400).json({ error: 'Користувач з таким іменем вже існує' });
+    }
+    
+    if (users.find(u => u.email === email)) {
+        return res.status(400).json({ error: 'Користувач з таким email вже існує' });
     }
     
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = {
             id: users.length + 1,
-            username: username.trim(),
-            email: email.trim(),
+            username,
+            email,
             password: hashedPassword,
             role: 'user',
-            joinDate: new Date().toISOString().split('T')[0],
-            favorites: []
+            createdAt: new Date().toISOString().split('T')[0]
         };
         
         users.push(newUser);
         
-        // Створюємо JWT токен
+        // Генерація JWT токена
         const token = jwt.sign(
-            { 
-                id: newUser.id, 
-                username: newUser.username,
-                email: newUser.email,
-                role: newUser.role 
-            },
+            { id: newUser.id, username: newUser.username, role: newUser.role },
             SECRET_KEY,
             { expiresIn: '24h' }
         );
         
         res.status(201).json({
-            success: true,
-            message: 'Реєстрація успішна',
+            message: 'Користувач успішно зареєстрований',
             user: {
                 id: newUser.id,
                 username: newUser.username,
@@ -211,58 +182,40 @@ app.post('/api/auth/register', async (req, res) => {
             token
         });
     } catch (error) {
-        console.error('Помилка реєстрації:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Помилка сервера при реєстрації' 
-        });
+        res.status(500).json({ error: 'Помилка сервера' });
     }
 });
 
-// Логін
+// POST /api/auth/login - Вхід користувача
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
     
+    // Валідація вхідних даних
     if (!username || !password) {
-        return res.status(400).json({ 
-            success: false,
-            error: "Логін та пароль обов'язкові" 
-        });
+        return res.status(400).json({ error: 'Логін та пароль обов\'язкові' });
     }
     
     const user = users.find(u => u.username === username || u.email === username);
     
     if (!user) {
-        return res.status(401).json({ 
-            success: false,
-            error: 'Невірний логін або пароль' 
-        });
+        return res.status(401).json({ error: 'Невірний логін або пароль' });
     }
     
     try {
         const validPassword = await bcrypt.compare(password, user.password);
         
         if (!validPassword) {
-            return res.status(401).json({ 
-                success: false,
-                error: 'Невірний логін або пароль' 
-            });
+            return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
         
-        // Створюємо JWT токен
+        // Генерація JWT токена
         const token = jwt.sign(
-            { 
-                id: user.id, 
-                username: user.username,
-                email: user.email,
-                role: user.role 
-            },
+            { id: user.id, username: user.username, role: user.role },
             SECRET_KEY,
             { expiresIn: '24h' }
         );
         
         res.json({
-            success: true,
             message: 'Вхід успішний',
             user: {
                 id: user.id,
@@ -273,85 +226,37 @@ app.post('/api/auth/login', async (req, res) => {
             token
         });
     } catch (error) {
-        console.error('Помилка входу:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Помилка сервера' 
-        });
+        res.status(500).json({ error: 'Помилка сервера' });
     }
 });
 
-// ==================== CRUD ДЛЯ ТАБУЛАТУР ====================
+// ==================== CRUD API для табулатур ====================
 
 // GET /api/tabs - Отримати всі табулатури (публічний доступ)
 app.get('/api/tabs', (req, res) => {
-    const { search, genre, difficulty, artist, sortBy = 'newest' } = req.query;
-    
-    let filteredTabs = [...tabs];
-    
-    // Фільтрація
-    if (search) {
-        const searchLower = search.toLowerCase();
-        filteredTabs = filteredTabs.filter(tab => 
-            tab.title.toLowerCase().includes(searchLower) ||
-            tab.artist.toLowerCase().includes(searchLower)
-        );
-    }
-    
-    if (genre) {
-        filteredTabs = filteredTabs.filter(tab => tab.genre === genre);
-    }
-    
-    if (difficulty) {
-        filteredTabs = filteredTabs.filter(tab => tab.difficulty === difficulty);
-    }
-    
-    if (artist) {
-        filteredTabs = filteredTabs.filter(tab => tab.artist === artist);
-    }
-    
-    // Сортування
-    if (sortBy === 'newest') {
-        filteredTabs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } else if (sortBy === 'popular') {
-        filteredTabs.sort((a, b) => b.views - a.views);
-    } else if (sortBy === 'likes') {
-        filteredTabs.sort((a, b) => b.likes - a.likes);
-    }
-    
-    res.json({
-        success: true,
-        count: filteredTabs.length,
-        tabs: filteredTabs
-    });
+    res.status(200).json(guitarTabs);
 });
 
 // GET /api/tabs/:id - Отримати одну табулатуру (публічний доступ)
 app.get('/api/tabs/:id', (req, res) => {
     const id = parseInt(req.params.id);
-    const tab = tabs.find(t => t.id === id);
+    const tab = guitarTabs.find(t => t.id === id);
     
     if (!tab) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Табулатура не знайдена' 
-        });
+        return res.status(404).json({ error: 'Табулатура не знайдена' });
     }
     
-    // Збільшуємо кількість переглядів
+    // Збільшуємо лічильник переглядів
     tab.views = (tab.views || 0) + 1;
     
-    res.json({
-        success: true,
-        tab
-    });
+    res.status(200).json(tab);
 });
 
 // POST /api/tabs - Створити нову табулатуру (потрібна авторизація)
 app.post('/api/tabs', authenticateToken, (req, res) => {
     const { title, artist, difficulty, genre, tabContent, capo, tuning } = req.body;
     
-    // Валідація
+    // Валідація вхідних даних
     const errors = [];
     
     if (!title || title.trim().length < 2) {
@@ -359,38 +264,35 @@ app.post('/api/tabs', authenticateToken, (req, res) => {
     }
     
     if (!artist || artist.trim().length < 2) {
-        errors.push('Виконавець має містити принаймні 2 символи');
+        errors.push('Ім\'я виконавця має містити принаймні 2 символи');
     }
     
     if (!difficulty || !['beginner', 'intermediate', 'advanced'].includes(difficulty)) {
         errors.push('Рівень складності має бути: beginner, intermediate або advanced');
     }
     
-    if (!genre || !['rock', 'metal', 'pop', 'blues', 'jazz', 'folk', 'country'].includes(genre)) {
-        errors.push('Невірний жанр');
+    if (!genre || genre.trim().length < 2) {
+        errors.push('Вкажіть жанр');
     }
     
     if (!tabContent || tabContent.trim().length < 10) {
         errors.push('Вміст табулатури занадто короткий');
     }
     
-    if (capo && (isNaN(capo) || capo < 0 || capo > 12)) {
-        errors.push('Капо має бути від 0 до 12');
+    if (capo !== undefined && (isNaN(capo) || capo < 0 || capo > 12)) {
+        errors.push('Капо має бути числом від 0 до 12');
     }
     
     if (errors.length > 0) {
-        return res.status(400).json({ 
-            success: false,
-            errors 
-        });
+        return res.status(400).json({ errors });
     }
     
     const newTab = {
-        id: tabs.length > 0 ? Math.max(...tabs.map(t => t.id)) + 1 : 1,
+        id: guitarTabs.length > 0 ? Math.max(...guitarTabs.map(t => t.id)) + 1 : 1,
         title: title.trim(),
         artist: artist.trim(),
         difficulty,
-        genre,
+        genre: genre.trim(),
         tabContent: tabContent.trim(),
         capo: capo ? parseInt(capo) : 0,
         tuning: tuning || 'Standard',
@@ -400,38 +302,31 @@ app.post('/api/tabs', authenticateToken, (req, res) => {
         views: 0
     };
     
-    tabs.push(newTab);
+    guitarTabs.push(newTab);
     
     res.status(201).json({
-        success: true,
         message: 'Табулатура успішно створена',
         tab: newTab
     });
 });
 
-// PUT /api/tabs/:id - Оновити табулатуру (авторизація + автор або адмін)
+// PUT /api/tabs/:id - Оновити табулатуру (потрібна авторизація)
 app.put('/api/tabs/:id', authenticateToken, (req, res) => {
     const id = parseInt(req.params.id);
-    const tabIndex = tabs.findIndex(t => t.id === id);
+    const tabIndex = guitarTabs.findIndex(t => t.id === id);
     
     if (tabIndex === -1) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Табулатура не знайдена' 
-        });
+        return res.status(404).json({ error: 'Табулатура не знайдена' });
     }
     
-    // Перевірка прав доступу
-    if (tabs[tabIndex].author !== req.user.username && req.user.role !== 'admin') {
-        return res.status(403).json({ 
-            success: false,
-            error: 'Ви не маєте прав для редагування цієї табулатури' 
-        });
+    // Перевірка прав доступу (тільки автор або адмін можуть редагувати)
+    if (guitarTabs[tabIndex].author !== req.user.username && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Недостатньо прав для редагування' });
     }
     
     const { title, artist, difficulty, genre, tabContent, capo, tuning } = req.body;
     
-    // Валідація
+    // Валідація вхідних даних
     const errors = [];
     
     if (title && title.trim().length < 2) {
@@ -439,187 +334,107 @@ app.put('/api/tabs/:id', authenticateToken, (req, res) => {
     }
     
     if (artist && artist.trim().length < 2) {
-        errors.push('Виконавець має містити принаймні 2 символи');
+        errors.push('Ім\'я виконавця має містити принаймні 2 символи');
     }
     
     if (difficulty && !['beginner', 'intermediate', 'advanced'].includes(difficulty)) {
         errors.push('Рівень складності має бути: beginner, intermediate або advanced');
     }
     
-    if (genre && !['rock', 'metal', 'pop', 'blues', 'jazz', 'folk', 'country'].includes(genre)) {
-        errors.push('Невірний жанр');
+    if (genre && genre.trim().length < 2) {
+        errors.push('Вкажіть жанр');
     }
     
     if (tabContent && tabContent.trim().length < 10) {
         errors.push('Вміст табулатури занадто короткий');
     }
     
-    if (capo && (isNaN(capo) || capo < 0 || capo > 12)) {
-        errors.push('Капо має бути від 0 до 12');
+    if (capo !== undefined && (isNaN(capo) || capo < 0 || capo > 12)) {
+        errors.push('Капо має бути числом від 0 до 12');
     }
     
     if (errors.length > 0) {
-        return res.status(400).json({ 
-            success: false,
-            errors 
-        });
+        return res.status(400).json({ errors });
     }
     
     // Оновлення даних
-    tabs[tabIndex] = {
-        ...tabs[tabIndex],
-        title: title ? title.trim() : tabs[tabIndex].title,
-        artist: artist ? artist.trim() : tabs[tabIndex].artist,
-        difficulty: difficulty || tabs[tabIndex].difficulty,
-        genre: genre || tabs[tabIndex].genre,
-        tabContent: tabContent ? tabContent.trim() : tabs[tabIndex].tabContent,
-        capo: capo ? parseInt(capo) : tabs[tabIndex].capo,
-        tuning: tuning || tabs[tabIndex].tuning
-    };
+    if (title) guitarTabs[tabIndex].title = title.trim();
+    if (artist) guitarTabs[tabIndex].artist = artist.trim();
+    if (difficulty) guitarTabs[tabIndex].difficulty = difficulty;
+    if (genre) guitarTabs[tabIndex].genre = genre.trim();
+    if (tabContent) guitarTabs[tabIndex].tabContent = tabContent.trim();
+    if (capo !== undefined) guitarTabs[tabIndex].capo = parseInt(capo);
+    if (tuning) guitarTabs[tabIndex].tuning = tuning;
     
-    res.json({
-        success: true,
+    res.status(200).json({
         message: 'Табулатура успішно оновлена',
-        tab: tabs[tabIndex]
+        tab: guitarTabs[tabIndex]
     });
 });
 
-// DELETE /api/tabs/:id - Видалити табулатуру (авторизація + автор або адмін)
+// DELETE /api/tabs/:id - Видалити табулатуру (потрібна авторизація)
 app.delete('/api/tabs/:id', authenticateToken, (req, res) => {
     const id = parseInt(req.params.id);
-    const tabIndex = tabs.findIndex(t => t.id === id);
+    const tabIndex = guitarTabs.findIndex(t => t.id === id);
     
     if (tabIndex === -1) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Табулатура не знайдена' 
-        });
+        return res.status(404).json({ error: 'Табулатура не знайдена' });
     }
     
-    // Перевірка прав доступу
-    if (tabs[tabIndex].author !== req.user.username && req.user.role !== 'admin') {
-        return res.status(403).json({ 
-            success: false,
-            error: 'Ви не маєте прав для видалення цієї табулатури' 
-        });
+    // Перевірка прав доступу (тільки автор або адмін можуть видаляти)
+    if (guitarTabs[tabIndex].author !== req.user.username && req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Недостатньо прав для видалення' });
     }
     
-    const deletedTab = tabs.splice(tabIndex, 1)[0];
+    const deletedTab = guitarTabs.splice(tabIndex, 1)[0];
     
-    res.json({
-        success: true,
+    res.status(200).json({
         message: 'Табулатура успішно видалена',
         tab: deletedTab
     });
 });
 
-// POST /api/tabs/:id/like - Поставити лайк (авторизація)
+// POST /api/tabs/:id/like - Поставити лайк (потрібна авторизація)
 app.post('/api/tabs/:id/like', authenticateToken, (req, res) => {
     const id = parseInt(req.params.id);
-    const tabIndex = tabs.findIndex(t => t.id === id);
-    
-    if (tabIndex === -1) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Табулатура не знайдена' 
-        });
-    }
-    
-    tabs[tabIndex].likes = (tabs[tabIndex].likes || 0) + 1;
-    
-    res.json({
-        success: true,
-        message: 'Лайк додано',
-        likes: tabs[tabIndex].likes
-    });
-});
-
-// POST /api/tabs/:id/favorite - Додати до обраного (авторизація)
-app.post('/api/tabs/:id/favorite', authenticateToken, (req, res) => {
-    const id = parseInt(req.params.id);
-    const tab = tabs.find(t => t.id === id);
+    const tab = guitarTabs.find(t => t.id === id);
     
     if (!tab) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Табулатура не знайдена' 
-        });
+        return res.status(404).json({ error: 'Табулатура не знайдена' });
     }
     
-    const userIndex = users.findIndex(u => u.id === req.user.id);
+    tab.likes = (tab.likes || 0) + 1;
     
-    if (userIndex === -1) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Користувач не знайдений' 
-        });
-    }
-    
-    if (!users[userIndex].favorites.includes(id)) {
-        users[userIndex].favorites.push(id);
-    }
-    
-    res.json({
-        success: true,
-        message: 'Додано до обраного',
-        favorites: users[userIndex].favorites
+    res.status(200).json({
+        message: 'Лайк додано',
+        likes: tab.likes
     });
 });
 
-// ==================== CRUD ДЛЯ ПІСЕНЬ ====================
+// ==================== CRUD API для пісень ====================
 
-// GET /api/songs - Отримати всі пісні
+// GET /api/songs - Отримати всі пісні (публічний доступ)
 app.get('/api/songs', (req, res) => {
-    const { artist, album, year } = req.query;
-    
-    let filteredSongs = [...songs];
-    
-    if (artist) {
-        filteredSongs = filteredSongs.filter(song => 
-            song.artist.toLowerCase().includes(artist.toLowerCase())
-        );
-    }
-    
-    if (album) {
-        filteredSongs = filteredSongs.filter(song => 
-            song.album.toLowerCase().includes(album.toLowerCase())
-        );
-    }
-    
-    if (year) {
-        filteredSongs = filteredSongs.filter(song => song.year == year);
-    }
-    
-    res.json({
-        success: true,
-        count: filteredSongs.length,
-        songs: filteredSongs
-    });
+    res.status(200).json(songs);
 });
 
-// GET /api/songs/:id - Отримати одну пісню
+// GET /api/songs/:id - Отримати одну пісню (публічний доступ)
 app.get('/api/songs/:id', (req, res) => {
     const id = parseInt(req.params.id);
     const song = songs.find(s => s.id === id);
     
     if (!song) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Пісня не знайдена' 
-        });
+        return res.status(404).json({ error: 'Пісня не знайдена' });
     }
     
-    res.json({
-        success: true,
-        song
-    });
+    res.status(200).json(song);
 });
 
-// POST /api/songs - Створити нову пісню (тільки адмін)
-app.post('/api/songs', authenticateToken, requireAdmin, (req, res) => {
-    const { title, artist, year, album, chords, duration, tabId } = req.body;
+// POST /api/songs - Створити нову пісню (потрібна авторизація)
+app.post('/api/songs', authenticateToken, (req, res) => {
+    const { title, artist, album, year, duration, tabId } = req.body;
     
-    // Валідація
+    // Валідація вхідних даних
     const errors = [];
     
     if (!title || title.trim().length < 2) {
@@ -627,31 +442,27 @@ app.post('/api/songs', authenticateToken, requireAdmin, (req, res) => {
     }
     
     if (!artist || artist.trim().length < 2) {
-        errors.push('Виконавець має містити принаймні 2 символи');
+        errors.push('Ім\'я виконавця має містити принаймні 2 символи');
     }
     
-    if (!year || isNaN(year) || year < 1900 || year > new Date().getFullYear()) {
+    if (year && (isNaN(year) || year < 1900 || year > new Date().getFullYear())) {
         errors.push('Рік має бути від 1900 до поточного року');
     }
     
-    if (tabId && !tabs.find(t => t.id === parseInt(tabId))) {
-        errors.push('Табулатура з таким ID не існує');
+    if (tabId && !guitarTabs.find(t => t.id === parseInt(tabId))) {
+        errors.push('Табулатура з вказаним ID не існує');
     }
     
     if (errors.length > 0) {
-        return res.status(400).json({ 
-            success: false,
-            errors 
-        });
+        return res.status(400).json({ errors });
     }
     
     const newSong = {
         id: songs.length > 0 ? Math.max(...songs.map(s => s.id)) + 1 : 1,
         title: title.trim(),
         artist: artist.trim(),
-        year: parseInt(year),
         album: album ? album.trim() : '',
-        chords: chords || [],
+        year: year ? parseInt(year) : null,
         duration: duration || '',
         tabId: tabId ? parseInt(tabId) : null
     };
@@ -659,137 +470,211 @@ app.post('/api/songs', authenticateToken, requireAdmin, (req, res) => {
     songs.push(newSong);
     
     res.status(201).json({
-        success: true,
         message: 'Пісня успішно створена',
         song: newSong
     });
 });
 
-// ==================== КОРИСТУВАЧІ ====================
-
-// GET /api/users/me - Отримати інформацію про поточного користувача
-app.get('/api/users/me', authenticateToken, (req, res) => {
-    const user = users.find(u => u.id === req.user.id);
+// PUT /api/songs/:id - Оновити пісню (потрібна авторизація)
+app.put('/api/songs/:id', authenticateToken, (req, res) => {
+    const id = parseInt(req.params.id);
+    const songIndex = songs.findIndex(s => s.id === id);
     
-    if (!user) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Користувач не знайдений' 
-        });
+    if (songIndex === -1) {
+        return res.status(404).json({ error: 'Пісня не знайдена' });
     }
     
-    // Без пароля
-    const { password, ...userWithoutPassword } = user;
+    const { title, artist, album, year, duration, tabId } = req.body;
     
-    res.json({
-        success: true,
-        user: userWithoutPassword
-    });
-});
-
-// GET /api/users/me/favorites - Отримати обрані табулатури
-app.get('/api/users/me/favorites', authenticateToken, (req, res) => {
-    const user = users.find(u => u.id === req.user.id);
+    // Валідація вхідних даних
+    const errors = [];
     
-    if (!user) {
-        return res.status(404).json({ 
-            success: false,
-            error: 'Користувач не знайдений' 
-        });
+    if (title && title.trim().length < 2) {
+        errors.push('Назва пісні має містити принаймні 2 символи');
     }
     
-    const favoriteTabs = tabs.filter(tab => user.favorites.includes(tab.id));
+    if (artist && artist.trim().length < 2) {
+        errors.push('Ім\'я виконавця має містити принаймні 2 символи');
+    }
     
-    res.json({
-        success: true,
-        favorites: favoriteTabs
+    if (year && (isNaN(year) || year < 1900 || year > new Date().getFullYear())) {
+        errors.push('Рік має бути від 1900 до поточного року');
+    }
+    
+    if (tabId && !guitarTabs.find(t => t.id === parseInt(tabId))) {
+        errors.push('Табулатура з вказаним ID не існує');
+    }
+    
+    if (errors.length > 0) {
+        return res.status(400).json({ errors });
+    }
+    
+    // Оновлення даних
+    if (title) songs[songIndex].title = title.trim();
+    if (artist) songs[songIndex].artist = artist.trim();
+    if (album !== undefined) songs[songIndex].album = album ? album.trim() : '';
+    if (year) songs[songIndex].year = parseInt(year);
+    if (duration !== undefined) songs[songIndex].duration = duration;
+    if (tabId !== undefined) songs[songIndex].tabId = tabId ? parseInt(tabId) : null;
+    
+    res.status(200).json({
+        message: 'Пісня успішно оновлена',
+        song: songs[songIndex]
     });
 });
 
-// ==================== СТАТИСТИКА ====================
-
-// GET /api/stats - Статистика (тільки адмін)
-app.get('/api/stats', authenticateToken, requireAdmin, (req, res) => {
-    const totalTabs = tabs.length;
-    const totalSongs = songs.length;
-    const totalUsers = users.length;
+// DELETE /api/songs/:id - Видалити пісню (потрібна авторизація, тільки адмін)
+app.delete('/api/songs/:id', authenticateToken, (req, res) => {
+    const id = parseInt(req.params.id);
+    const songIndex = songs.findIndex(s => s.id === id);
     
-    const genreStats = tabs.reduce((acc, tab) => {
-        acc[tab.genre] = (acc[tab.genre] || 0) + 1;
-        return acc;
-    }, {});
+    if (songIndex === -1) {
+        return res.status(404).json({ error: 'Пісня не знайдена' });
+    }
     
-    const difficultyStats = tabs.reduce((acc, tab) => {
-        acc[tab.difficulty] = (acc[tab.difficulty] || 0) + 1;
-        return acc;
-    }, {});
+    // Перевірка прав доступу (тільки адмін)
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Недостатньо прав для видалення' });
+    }
     
-    const totalViews = tabs.reduce((sum, tab) => sum + (tab.views || 0), 0);
-    const totalLikes = tabs.reduce((sum, tab) => sum + (tab.likes || 0), 0);
+    const deletedSong = songs.splice(songIndex, 1)[0];
     
-    res.json({
-        success: true,
-        stats: {
-            totalTabs,
-            totalSongs,
-            totalUsers,
-            totalViews,
-            totalLikes,
-            genreStats,
-            difficultyStats,
-            averageLikesPerTab: totalLikes / totalTabs || 0,
-            averageViewsPerTab: totalViews / totalTabs || 0
-        }
+    res.status(200).json({
+        message: 'Пісня успішно видалена',
+        song: deletedSong
     });
 });
 
-// ==================== HTML СТОРІНКИ ====================
+// ==================== Додаткові API ====================
 
+// GET /api/tabs/search/:query - Пошук табулатур (публічний доступ)
+app.get('/api/tabs/search/:query', (req, res) => {
+    const query = req.params.query.toLowerCase();
+    
+    const results = guitarTabs.filter(tab => 
+        tab.title.toLowerCase().includes(query) ||
+        tab.artist.toLowerCase().includes(query) ||
+        tab.genre.toLowerCase().includes(query)
+    );
+    
+    res.status(200).json({
+        count: results.length,
+        results
+    });
+});
+
+// GET /api/stats - Статистика (публічний доступ)
+app.get('/api/stats', (req, res) => {
+    const stats = {
+        totalTabs: guitarTabs.length,
+        totalSongs: songs.length,
+        totalUsers: users.length,
+        totalViews: guitarTabs.reduce((sum, tab) => sum + (tab.views || 0), 0),
+        totalLikes: guitarTabs.reduce((sum, tab) => sum + (tab.likes || 0), 0),
+        mostPopularTab: guitarTabs.reduce((max, tab) => (tab.views > max.views ? tab : max), guitarTabs[0]),
+        genres: [...new Set(guitarTabs.map(tab => tab.genre))]
+    };
+    
+    res.status(200).json(stats);
+});
+
+// ==================== Обробка помилок ====================
+
+// 404 для неіснуючих API ендпоінтів
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ error: 'API ендпоінт не знайдено' });
+});
+
+// ==================== Стартові HTML сторінки ====================
+
+// Головна сторінка (ваш існуючий HTML)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.get('/api/docs', (req, res) => {
-    res.json({
-        message: 'Документація REST API для Guitar Tabs',
-        endpoints: {
-            auth: {
-                register: 'POST /api/auth/register',
-                login: 'POST /api/auth/login'
-            },
-            tabs: {
-                getAll: 'GET /api/tabs',
-                getOne: 'GET /api/tabs/:id',
-                create: 'POST /api/tabs (requires auth)',
-                update: 'PUT /api/tabs/:id (requires auth)',
-                delete: 'DELETE /api/tabs/:id (requires auth)',
-                like: 'POST /api/tabs/:id/like (requires auth)',
-                favorite: 'POST /api/tabs/:id/favorite (requires auth)'
-            },
-            songs: {
-                getAll: 'GET /api/songs',
-                getOne: 'GET /api/songs/:id',
-                create: 'POST /api/songs (requires admin)'
-            },
-            users: {
-                getProfile: 'GET /api/users/me (requires auth)',
-                getFavorites: 'GET /api/users/me/favorites (requires auth)'
-            },
-            stats: 'GET /api/stats (requires admin)'
-        }
-    });
+app.get('/tabs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'tabs.html'));
 });
 
-// Обробка 404
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Маршрут не знайдено'
-    });
+app.get('/songs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'songs.html'));
+});
+
+// Сторінка документації API
+app.get('/api-docs', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Guitar Tabs API Documentation</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .endpoint { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
+                .method { font-weight: bold; padding: 3px 8px; border-radius: 3px; margin-right: 10px; }
+                .get { background: #4CAF50; color: white; }
+                .post { background: #2196F3; color: white; }
+                .put { background: #FF9800; color: white; }
+                .delete { background: #F44336; color: white; }
+                .auth { color: #9C27B0; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h1>🎸 Guitar Tabs REST API Documentation</h1>
+            
+            <h2>🔐 Authentication</h2>
+            <div class="endpoint">
+                <span class="method post">POST</span> /api/auth/register
+                <p>Register new user</p>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span> /api/auth/login
+                <p>Login user</p>
+            </div>
+            
+            <h2>📄 Tabs</h2>
+            <div class="endpoint">
+                <span class="method get">GET</span> /api/tabs
+                <p>Get all tabs (public)</p>
+            </div>
+            <div class="endpoint">
+                <span class="method get">GET</span> /api/tabs/:id
+                <p>Get single tab (public)</p>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span> /api/tabs
+                <p class="auth">Requires JWT token</p>
+                <p>Create new tab</p>
+            </div>
+            <div class="endpoint">
+                <span class="method put">PUT</span> /api/tabs/:id
+                <p class="auth">Requires JWT token</p>
+                <p>Update tab</p>
+            </div>
+            <div class="endpoint">
+                <span class="method delete">DELETE</span> /api/tabs/:id
+                <p class="auth">Requires JWT token</p>
+                <p>Delete tab</p>
+            </div>
+            
+            <h2>🎵 Songs</h2>
+            <div class="endpoint">
+                <span class="method get">GET</span> /api/songs
+                <p>Get all songs (public)</p>
+            </div>
+            <div class="endpoint">
+                <span class="method post">POST</span> /api/songs
+                <p class="auth">Requires JWT token</p>
+                <p>Create new song</p>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 // Запуск сервера
 app.listen(PORT, () => {
     console.log(`Сервер запущено на порті ${PORT}`);
-    console.log(`Документація API доступна за адресою: http://localhost:${PORT}/api/docs`);
+    console.log(`Головна сторінка: http://localhost:${PORT}`);
+    console.log(`Документація API: http://localhost:${PORT}/api-docs`);
+    console.log(`Приклад запиту: curl http://localhost:${PORT}/api/tabs`);
 });
