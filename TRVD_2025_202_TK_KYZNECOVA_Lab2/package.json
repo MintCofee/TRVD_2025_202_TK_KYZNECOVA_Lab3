@@ -1,17 +1,22 @@
 {
-  "name": "trvd",
+  "name": "library-rest-api",
   "version": "1.0.0",
-  "description": "Тема: Guitar Tabs & Chords (Збірник гітарної табулатури та акордів)",
-  "main": "app.js",
+  "description": "REST API для управління бібліотекою книг",
+  "main": "src/app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "express": "^5.1.0",
-    "mongoose": "^8.19.2",
-    "mustache-express": "^1.3.2"
+    "express": "^4.18.2",
+    "mongoose": "^7.5.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.3.1",
+    "express-validator": "^7.0.1",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }
